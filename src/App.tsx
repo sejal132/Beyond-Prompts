@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ResponseBlock from "./components/ResponseBlock";
 import "./App.css";
 
 function App() {
@@ -31,11 +32,7 @@ function App() {
           <button onClick={handleGenerate}>Generate</button>
         </div>
 
-        {response && (
-          <div className="response-block">
-            {response}
-          </div>
-        )}
+      {response && <ResponseBlock text={response} />}
       </main>
     </div>
   );

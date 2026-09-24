@@ -64,3 +64,15 @@ button {
   border: 1px solid #ddd;
   border-radius: 16px;
 }
+
+.response-block {
+  user-select: none;
+  touch-action: none;
+}
+
+.gesture-status {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 14px;
+  color: #666;
+}
