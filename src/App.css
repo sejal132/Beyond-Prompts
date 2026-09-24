@@ -76,3 +76,10 @@ button {
   font-size: 14px;
   color: #666;
 }
+
+.detail-level {
+  text-align: center;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #888;
+}
