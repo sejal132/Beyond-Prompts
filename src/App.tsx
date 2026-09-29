@@ -6,14 +6,33 @@ function App() {
   const [prompt, setPrompt] = useState("");
   const [response, setResponse] = useState("");
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim()) return;
 
-    // Temporary response — we'll replace this with an LLM later.
-    setResponse(
-      "Artificial intelligence allows computers to perform tasks that normally require human intelligence. " +
-        "Modern AI systems can understand language, recognize patterns, generate content, and assist users with complex tasks."
-    );
+    try {
+      const result = await fetch(
+        "/api/generate",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: prompt,
+          }),
+        }
+      );
+
+      if (!result.ok) {
+        throw new Error("Failed to generate response");
+      }
+
+      const data = await result.json();
+
+      setResponse(data.text);
+    } catch (error) {
+      console.error("Error:", error);
+    }
   };
 
   return (
@@ -32,7 +51,7 @@ function App() {
           <button onClick={handleGenerate}>Generate</button>
         </div>
 
-      {response && <ResponseBlock text={response} />}
+        {response && <ResponseBlock text={response} />}
       </main>
     </div>
   );
