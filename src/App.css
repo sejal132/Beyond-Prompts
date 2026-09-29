@@ -19,8 +19,11 @@ body {
   width: 100%;
   max-width: 430px;
   min-height: 700px;
+
   background: white;
+
   padding: 24px;
+
   border-radius: 20px;
 }
 
@@ -40,46 +43,59 @@ h1 {
 textarea {
   width: 100%;
   min-height: 100px;
+
   padding: 14px;
+
   font: inherit;
+
   resize: vertical;
+
   border: 1px solid #ccc;
   border-radius: 12px;
 }
 
 button {
   width: 100%;
+
   margin-top: 12px;
   padding: 12px;
+
   font: inherit;
+
   cursor: pointer;
+
   border: none;
   border-radius: 12px;
 }
 
 .response-block {
   margin-top: 30px;
+
   padding: 20px;
+
   line-height: 1.6;
+
   border: 1px solid #ddd;
   border-radius: 16px;
-}
 
-.response-block {
   user-select: none;
   touch-action: none;
+
+  transition: opacity 0.2s ease;
+}
+
+.response-block.transforming {
+  opacity: 0.5;
+
+  pointer-events: none;
 }
 
 .gesture-status {
   text-align: center;
-  margin-top: 12px;
-  font-size: 14px;
-  color: #666;
-}
 
-.detail-level {
-  text-align: center;
-  margin-top: 6px;
-  font-size: 13px;
-  color: #888;
+  margin-top: 12px;
+
+  font-size: 14px;
+
+  color: #666;
 }

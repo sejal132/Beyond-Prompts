@@ -1,120 +1,195 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePinch } from "@use-gesture/react";
 
 interface ResponseBlockProps {
   text: string;
 }
 
-type DetailLevel = "short" | "normal" | "detailed";
+type TransformAction = "condense" | "expand";
 
 function ResponseBlock({ text }: ResponseBlockProps) {
-  const [gesture, setGesture] = useState("No gesture detected");
-  const [detailLevel, setDetailLevel] =
-    useState<DetailLevel>("normal");
+  const [displayedText, setDisplayedText] = useState(text);
 
-  // Distance between fingers when the gesture starts
+  const [gesture, setGesture] = useState(
+    "No gesture detected"
+  );
+
+  const [isTransforming, setIsTransforming] =
+    useState(false);
+
+  // Distance between fingers when pinch begins
   const startDistance = useRef(0);
 
-  // Latest distance while the fingers are moving
+  // Most recent distance between fingers
   const latestDistance = useRef(0);
 
-  const shortText =
-    "AI allows computers to perform tasks that normally require human intelligence.";
+  // If the user generates an entirely new response,
+  // reset the displayed text.
+  useEffect(() => {
+    setDisplayedText(text);
+  }, [text]);
 
-  const detailedText =
-    "Artificial intelligence is a field of computer science focused on creating systems capable of performing tasks that normally require human intelligence. These tasks can include understanding natural language, recognizing patterns in data, generating text and images, making predictions, solving problems, and assisting people with complex decisions. Modern AI systems often learn patterns from large amounts of data and use those patterns to generate useful outputs for new inputs.";
+  // --------------------------------------------------
+  // Send current text to backend for transformation
+  // --------------------------------------------------
 
-  const getDisplayedText = () => {
-    if (detailLevel === "short") {
-      return shortText;
-    }
-
-    if (detailLevel === "detailed") {
-      return detailedText;
-    }
-
-    return text;
-  };
-
-  const handlePinchIn = () => {
-    setGesture("PINCH IN → Condense");
-
-    setDetailLevel((current) => {
-      if (current === "detailed") return "normal";
-      if (current === "normal") return "short";
-
-      return "short";
-    });
-  };
-
-  const handlePinchOut = () => {
-    setGesture("PINCH OUT → Expand");
-
-    setDetailLevel((current) => {
-      if (current === "short") return "normal";
-      if (current === "normal") return "detailed";
-
-      return "detailed";
-    });
-  };
-
-  const bind = usePinch(({ first, last, da: [distance] }) => {
-    // First event of a NEW pinch gesture
-    if (first) {
-      startDistance.current = distance;
-      latestDistance.current = distance;
-
-      setGesture("Pinching...");
+  const transformText = async (
+    action: TransformAction
+  ) => {
+    if (isTransforming) {
       return;
     }
 
-    // Continuously remember the current finger distance
-    if (!last) {
-      latestDistance.current = distance;
-      return;
+    try {
+      setIsTransforming(true);
+
+      if (action === "condense") {
+        setGesture("Condensing...");
+      } else {
+        setGesture("Expanding...");
+      }
+
+      const result = await fetch("/api/transform", {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+        },
+
+        body: JSON.stringify({
+          text: displayedText,
+          action: action,
+        }),
+      });
+
+      if (!result.ok) {
+        throw new Error(
+          "Failed to transform text"
+        );
+      }
+
+      const data = await result.json();
+
+      setDisplayedText(data.text);
+
+      if (action === "condense") {
+        setGesture(
+          "PINCH IN → Condensed"
+        );
+      } else {
+        setGesture(
+          "PINCH OUT → Expanded"
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Transformation error:",
+        error
+      );
+
+      setGesture(
+        "Transformation failed"
+      );
+    } finally {
+      setIsTransforming(false);
     }
+  };
 
-    // Gesture has ended.
-    // Compare the last known distance with the starting distance.
-    const start = startDistance.current;
-    const end = latestDistance.current;
+  // --------------------------------------------------
+  // Pinch gesture detection
+  // --------------------------------------------------
 
-    if (start === 0) {
-      setGesture("Could not detect gesture");
-      return;
+  const bind = usePinch(
+    ({
+      first,
+      last,
+      da: [distance],
+    }) => {
+      // Ignore new gestures while the LLM
+      // is already transforming the text.
+      if (isTransforming) {
+        return;
+      }
+
+      // Gesture begins
+      if (first) {
+        startDistance.current =
+          distance;
+
+        latestDistance.current =
+          distance;
+
+        setGesture("Pinching...");
+
+        return;
+      }
+
+      // Gesture is still happening
+      if (!last) {
+        latestDistance.current =
+          distance;
+
+        return;
+      }
+
+      // Gesture ended
+      const start =
+        startDistance.current;
+
+      const end =
+        latestDistance.current;
+
+      if (start === 0) {
+        setGesture(
+          "Could not detect gesture"
+        );
+
+        return;
+      }
+
+      const ratio = end / start;
+
+      // Fingers moved apart
+      if (ratio > 1.15) {
+        transformText("expand");
+      }
+
+      // Fingers moved together
+      else if (ratio < 0.85) {
+        transformText("condense");
+      }
+
+      // Not enough movement
+      else {
+        setGesture(
+          "Gesture too small"
+        );
+      }
     }
+  );
 
-    const ratio = end / start;
-
-    console.log("Start:", start);
-    console.log("End:", end);
-    console.log("Ratio:", ratio);
-
-    if (ratio > 1.15) {
-      handlePinchOut();
-    } else if (ratio < 0.85) {
-      handlePinchIn();
-    } else {
-      setGesture("Gesture too small");
-    }
-  });
+  // --------------------------------------------------
+  // UI
+  // --------------------------------------------------
 
   return (
     <>
       <div
         {...bind()}
-        className="response-block"
-        style={{ touchAction: "none" }}
+        className={`response-block ${
+          isTransforming
+            ? "transforming"
+            : ""
+        }`}
+        style={{
+          touchAction: "none",
+        }}
       >
-        {getDisplayedText()}
+        {displayedText}
       </div>
 
       <p className="gesture-status">
         {gesture}
-      </p>
-
-      <p className="detail-level">
-        Detail level: <strong>{detailLevel}</strong>
       </p>
     </>
   );
