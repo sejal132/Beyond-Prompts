@@ -47,7 +47,7 @@ app.post("/api/generate", async (req, res) => {
 });
 
 // --------------------------------------------------
-// Transform an existing AI response
+// Transform existing response with pinch
 // --------------------------------------------------
 
 app.post("/api/transform", async (req, res) => {
@@ -66,17 +66,16 @@ app.post("/api/transform", async (req, res) => {
       });
     }
 
-    // Count the approximate number of words
-    const currentWordCount = text.trim().split(/\s+/).length;
+    const currentWordCount =
+      text.trim().split(/\s+/).length;
 
     let instruction;
 
     // --------------------------------------------------
-    // CONDENSE
+    // Condense
     // --------------------------------------------------
 
     if (action === "condense") {
-      // Reduce by approximately 40%
       const targetWordCount = Math.max(
         5,
         Math.round(currentWordCount * 0.6)
@@ -114,11 +113,10 @@ ${text}
     }
 
     // --------------------------------------------------
-    // EXPAND
+    // Expand
     // --------------------------------------------------
 
     else {
-      // Increase by approximately 60%
       const targetWordCount = Math.round(
         currentWordCount * 1.6
       );
@@ -154,10 +152,6 @@ ${text}
 `;
     }
 
-    // --------------------------------------------------
-    // Ask OpenAI to perform transformation
-    // --------------------------------------------------
-
     const response = await openai.responses.create({
       model: "gpt-5.6-luna",
       input: instruction,
@@ -171,6 +165,75 @@ ${text}
 
     res.status(500).json({
       error: "Failed to transform response",
+    });
+  }
+});
+
+// --------------------------------------------------
+// Elaborate on lassoed text
+// --------------------------------------------------
+
+app.post("/api/elaborate", async (req, res) => {
+  try {
+    const { selectedText, context } = req.body;
+
+    if (!selectedText || !selectedText.trim()) {
+      return res.status(400).json({
+        error: "Selected text is required",
+      });
+    }
+
+    if (!context || !context.trim()) {
+      return res.status(400).json({
+        error: "Context is required",
+      });
+    }
+
+    const instruction = `
+The user is reading an AI-generated response and has
+lassoed a specific part because they want to understand
+that part in more depth.
+
+ORIGINAL RESPONSE:
+${context}
+
+SELECTED PART:
+${selectedText}
+
+Elaborate specifically on the selected part.
+
+Use the original response as context so that references,
+terms, or phrases in the selected text are interpreted
+correctly.
+
+Provide useful additional explanation, context, or an
+example where appropriate.
+
+Focus only on what the user selected.
+
+Do not repeat the entire original response.
+
+Do not mention that the user selected or lassoed text.
+
+Keep the explanation concise enough to work as an
+inline deep-dive card.
+
+Return only the explanation.
+`;
+
+    const response = await openai.responses.create({
+      model: "gpt-5.6-luna",
+      input: instruction,
+    });
+
+    res.json({
+      text: response.output_text,
+    });
+  } catch (error) {
+    console.error("Elaborate error:", error);
+
+    res.status(500).json({
+      error: "Failed to elaborate on selected text",
     });
   }
 });
