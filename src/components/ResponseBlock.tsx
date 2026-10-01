@@ -22,6 +22,10 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   const [isTransforming, setIsTransforming] =
     useState(false);
 
+  // Stores the indexes of words selected by the lasso
+  const [selectedWordIndexes, setSelectedWordIndexes] =
+    useState<number[]>([]);
+
   // --------------------------------------------------
   // Pinch refs
   // --------------------------------------------------
@@ -38,15 +42,25 @@ function ResponseBlock({ text }: ResponseBlockProps) {
 
   const responseRef = useRef<HTMLDivElement>(null);
 
+  // Store references to every rendered word
+  const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
+
   // --------------------------------------------------
-  // Reset when a new response is generated
+  // Reset when new response is generated
   // --------------------------------------------------
 
   useEffect(() => {
     setDisplayedText(text);
     setLassoPoints([]);
+    setSelectedWordIndexes([]);
     setIsLassoing(false);
   }, [text]);
+
+  // --------------------------------------------------
+  // Split response into words
+  // --------------------------------------------------
+
+  const words = displayedText.split(/\s+/);
 
   // --------------------------------------------------
   // LLM transformation
@@ -61,6 +75,9 @@ function ResponseBlock({ text }: ResponseBlockProps) {
 
     try {
       setIsTransforming(true);
+
+      setSelectedWordIndexes([]);
+      setLassoPoints([]);
 
       if (action === "condense") {
         setGesture("Condensing...");
@@ -96,8 +113,6 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       } else {
         setGesture("PINCH OUT → Expanded");
       }
-
-      setLassoPoints([]);
     } catch (error) {
       console.error(
         "Transformation error:",
@@ -128,6 +143,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         // Pinch takes priority over lasso
         setIsLassoing(false);
         setLassoPoints([]);
+        setSelectedWordIndexes([]);
 
         startDistance.current = distance;
         latestDistance.current = distance;
@@ -145,7 +161,9 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       const end = latestDistance.current;
 
       if (start === 0) {
-        setGesture("Could not detect gesture");
+        setGesture(
+          "Could not detect gesture"
+        );
         return;
       }
 
@@ -162,8 +180,8 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   );
 
   // --------------------------------------------------
-  // Convert finger position into coordinates relative
-  // to the response block
+  // Convert finger coordinates to coordinates inside
+  // the response block
   // --------------------------------------------------
 
   const getRelativePoint = (
@@ -183,15 +201,18 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Calculate distance between two points
+  // Distance between two points
   // --------------------------------------------------
 
   const getDistance = (
     point1: Point,
     point2: Point
   ) => {
-    const deltaX = point2.x - point1.x;
-    const deltaY = point2.y - point1.y;
+    const deltaX =
+      point2.x - point1.x;
+
+    const deltaY =
+      point2.y - point1.y;
 
     return Math.sqrt(
       deltaX * deltaX +
@@ -200,7 +221,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Determine whether the lasso is closed
+  // Check whether lasso is closed
   // --------------------------------------------------
 
   const isLassoClosed = (
@@ -210,7 +231,9 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       return false;
     }
 
-    const firstPoint = points[0];
+    const firstPoint =
+      points[0];
+
     const lastPoint =
       points[points.length - 1];
 
@@ -220,8 +243,6 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         lastPoint
       );
 
-    // Finger must finish within 50 pixels
-    // of where the lasso started.
     const CLOSE_THRESHOLD = 50;
 
     return (
@@ -231,13 +252,110 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Lasso touch start
+  // Point-in-polygon algorithm
+  //
+  // Determines whether a point is geometrically
+  // inside the user's lasso.
+  // --------------------------------------------------
+
+  const isPointInsidePolygon = (
+    point: Point,
+    polygon: Point[]
+  ) => {
+    let inside = false;
+
+    const { x, y } = point;
+
+    for (
+      let i = 0, j = polygon.length - 1;
+      i < polygon.length;
+      j = i++
+    ) {
+      const xi = polygon[i].x;
+      const yi = polygon[i].y;
+
+      const xj = polygon[j].x;
+      const yj = polygon[j].y;
+
+      const intersects =
+        yi > y !== yj > y &&
+        x <
+          ((xj - xi) *
+            (y - yi)) /
+            (yj - yi) +
+            xi;
+
+      if (intersects) {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  };
+
+  // --------------------------------------------------
+  // Find words inside lasso
+  // --------------------------------------------------
+
+  const findWordsInsideLasso = (
+    polygon: Point[]
+  ) => {
+    if (!responseRef.current) {
+      return [];
+    }
+
+    const responseRect =
+      responseRef.current.getBoundingClientRect();
+
+    const selectedIndexes: number[] = [];
+
+    wordRefs.current.forEach(
+      (wordElement, index) => {
+        if (!wordElement) {
+          return;
+        }
+
+        const wordRect =
+          wordElement.getBoundingClientRect();
+
+        // Find the center of the word
+        const centerX =
+          wordRect.left +
+          wordRect.width / 2 -
+          responseRect.left;
+
+        const centerY =
+          wordRect.top +
+          wordRect.height / 2 -
+          responseRect.top;
+
+        const wordCenter: Point = {
+          x: centerX,
+          y: centerY,
+        };
+
+        if (
+          isPointInsidePolygon(
+            wordCenter,
+            polygon
+          )
+        ) {
+          selectedIndexes.push(index);
+        }
+      }
+    );
+
+    return selectedIndexes;
+  };
+
+  // --------------------------------------------------
+  // Touch start
   // --------------------------------------------------
 
   const handleTouchStart = (
     event: React.TouchEvent<HTMLDivElement>
   ) => {
-    // More than one finger means pinch.
+    // More than one finger means pinch
     if (event.touches.length > 1) {
       setIsLassoing(false);
       setLassoPoints([]);
@@ -248,13 +366,18 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       return;
     }
 
-    const point = getRelativePoint(
-      event.touches[0]
-    );
+    const point =
+      getRelativePoint(
+        event.touches[0]
+      );
 
     if (!point) {
       return;
     }
+
+    // Starting a new lasso clears
+    // the previous selection
+    setSelectedWordIndexes([]);
 
     setIsLassoing(true);
 
@@ -268,14 +391,14 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Lasso movement
+  // Touch movement
   // --------------------------------------------------
 
   const handleTouchMove = (
     event: React.TouchEvent<HTMLDivElement>
   ) => {
-    // Second finger appeared.
-    // Cancel lasso so pinch can take over.
+    // If second finger appears,
+    // cancel lasso and allow pinch.
     if (event.touches.length > 1) {
       setIsLassoing(false);
       setLassoPoints([]);
@@ -286,9 +409,10 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       return;
     }
 
-    const point = getRelativePoint(
-      event.touches[0]
-    );
+    const point =
+      getRelativePoint(
+        event.touches[0]
+      );
 
     if (!point) {
       return;
@@ -303,7 +427,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Lasso finger release
+  // Touch end
   // --------------------------------------------------
 
   const handleTouchEnd = () => {
@@ -324,15 +448,16 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       return;
     }
 
-    // Check whether user actually returned
-    // close to the starting position.
-    if (!isLassoClosed(lassoPoints)) {
+    // Loop wasn't closed
+    if (
+      !isLassoClosed(
+        lassoPoints
+      )
+    ) {
       setGesture(
         "Lasso not closed"
       );
 
-      // Remove invalid stroke shortly after
-      // the user releases their finger.
       setTimeout(() => {
         setLassoPoints([]);
       }, 500);
@@ -340,18 +465,57 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       return;
     }
 
-    // Valid closed lasso
-    setGesture(
-      "Lasso drawn"
+    // ----------------------------------------------
+    // Valid lasso:
+    // determine which words are inside it.
+    // ----------------------------------------------
+
+    const selectedIndexes =
+      findWordsInsideLasso(
+        lassoPoints
+      );
+
+    if (
+      selectedIndexes.length === 0
+    ) {
+      setGesture(
+        "No text selected"
+      );
+
+      setTimeout(() => {
+        setLassoPoints([]);
+      }, 500);
+
+      return;
+    }
+
+    setSelectedWordIndexes(
+      selectedIndexes
     );
+
+    setGesture(
+      `${selectedIndexes.length} word${
+        selectedIndexes.length === 1
+          ? ""
+          : "s"
+      } selected`
+    );
+
+    // Once selection is known,
+    // remove the hand-drawn lasso.
+    setTimeout(() => {
+      setLassoPoints([]);
+    }, 300);
   };
 
   // --------------------------------------------------
-  // Convert points into SVG path
+  // Create SVG lasso path
   // --------------------------------------------------
 
   const createLassoPath = () => {
-    if (lassoPoints.length === 0) {
+    if (
+      lassoPoints.length === 0
+    ) {
       return "";
     }
 
@@ -370,11 +534,11 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         ` L ${lassoPoints[i].x} ${lassoPoints[i].y}`;
     }
 
-    // Only visually close the SVG path once
-    // the user's gesture is actually closed.
     if (
       !isLassoing &&
-      isLassoClosed(lassoPoints)
+      isLassoClosed(
+        lassoPoints
+      )
     ) {
       path += " Z";
     }
@@ -410,10 +574,35 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         }
       >
         <div className="response-text">
-          {displayedText}
+          {words.map(
+            (word, index) => (
+              <span
+                key={`${word}-${index}`}
+                ref={(element) => {
+                  wordRefs.current[
+                    index
+                  ] = element;
+                }}
+                className={
+                  selectedWordIndexes.includes(
+                    index
+                  )
+                    ? "selected-word"
+                    : ""
+                }
+              >
+                {word}
+                {index <
+                words.length - 1
+                  ? " "
+                  : ""}
+              </span>
+            )
+          )}
         </div>
 
-        {lassoPoints.length > 0 && (
+        {lassoPoints.length >
+          0 && (
           <svg
             className="lasso-overlay"
           >
