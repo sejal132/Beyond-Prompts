@@ -239,6 +239,65 @@ Return only the explanation.
 });
 
 // --------------------------------------------------
+// Rewrite existing response after scrub gesture
+// --------------------------------------------------
+
+app.post("/api/rewrite", async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    if (!text || !text.trim()) {
+      return res.status(400).json({
+        error: "Text is required",
+      });
+    }
+
+    const currentWordCount =
+      text.trim().split(/\s+/).length;
+
+    const instruction = `
+Rewrite the following AI-generated response in a fresh way.
+
+Preserve the same core information, meaning, and factual content.
+
+Use noticeably different wording and sentence structure.
+
+Keep approximately the same level of detail and approximately
+the same length as the original response.
+
+The current response is approximately ${currentWordCount} words.
+
+Do NOT intentionally summarize or shorten the response.
+
+Do NOT intentionally expand the response with substantially
+more information.
+
+Do not mention that you are rewriting anything.
+
+Return only the rewritten response.
+
+TEXT:
+${text}
+`;
+
+    const response = await openai.responses.create({
+      model: "gpt-5.6-luna",
+      input: instruction,
+    });
+
+    res.json({
+      text: response.output_text,
+    });
+  } catch (error) {
+    console.error("Rewrite error:", error);
+
+    res.status(500).json({
+      error: "Failed to rewrite response",
+    });
+  }
+});
+
+// --------------------------------------------------
 // Start server
 // --------------------------------------------------
 

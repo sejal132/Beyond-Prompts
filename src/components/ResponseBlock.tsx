@@ -29,7 +29,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
     useState(false);
 
   // --------------------------------------------------
-  // Lasso selection
+  // Lasso
   // --------------------------------------------------
 
   const [selectedWordIndexes, setSelectedWordIndexes] =
@@ -58,11 +58,31 @@ function ResponseBlock({ text }: ResponseBlockProps) {
     useState(false);
 
   // --------------------------------------------------
-  // Refs
+  // Pinch refs
   // --------------------------------------------------
 
   const startDistance = useRef(0);
   const latestDistance = useRef(0);
+
+  // --------------------------------------------------
+  // Scrub refs
+  // --------------------------------------------------
+
+  const scrubDirection =
+    useRef<"left" | "right" | null>(null);
+
+  const scrubDirectionChanges =
+    useRef(0);
+
+  const scrubSegmentStartX =
+    useRef(0);
+
+  const scrubDetected =
+    useRef(false);
+
+  // --------------------------------------------------
+  // DOM refs
+  // --------------------------------------------------
 
   const responseRef =
     useRef<HTMLDivElement>(null);
@@ -71,7 +91,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
     useRef<(HTMLSpanElement | null)[]>([]);
 
   // --------------------------------------------------
-  // Reset when a completely new response arrives
+  // Reset when a new response arrives
   // --------------------------------------------------
 
   useEffect(() => {
@@ -86,10 +106,14 @@ function ResponseBlock({ text }: ResponseBlockProps) {
 
     setIsLassoing(false);
     setIsElaborating(false);
+
+    scrubDirection.current = null;
+    scrubDirectionChanges.current = 0;
+    scrubDetected.current = false;
   }, [text]);
 
   // --------------------------------------------------
-  // Split response into words
+  // Words
   // --------------------------------------------------
 
   const words =
@@ -111,7 +135,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Calculate position of Deep Dive card
+  // Deep Dive position
   // --------------------------------------------------
 
   const calculateDeepDivePosition = (
@@ -128,69 +152,46 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       responseRef.current.getBoundingClientRect();
 
     const selectedRects = indexes
-      .map((index) => {
-        return wordRefs.current[
-          index
-        ]?.getBoundingClientRect();
-      })
+      .map((index) =>
+        wordRefs.current[index]?.getBoundingClientRect()
+      )
       .filter(
-        (
-          rect
-        ): rect is DOMRect =>
+        (rect): rect is DOMRect =>
           rect !== undefined
       );
 
-    if (
-      selectedRects.length === 0
-    ) {
+    if (selectedRects.length === 0) {
       return null;
     }
 
-    // Find bounding box surrounding all selected words
     const selectionLeft = Math.min(
-      ...selectedRects.map(
-        (rect) => rect.left
-      )
+      ...selectedRects.map((rect) => rect.left)
     );
 
     const selectionRight = Math.max(
-      ...selectedRects.map(
-        (rect) => rect.right
-      )
+      ...selectedRects.map((rect) => rect.right)
     );
 
     const selectionTop = Math.min(
-      ...selectedRects.map(
-        (rect) => rect.top
-      )
+      ...selectedRects.map((rect) => rect.top)
     );
 
     const selectionBottom = Math.max(
-      ...selectedRects.map(
-        (rect) => rect.bottom
-      )
+      ...selectedRects.map((rect) => rect.bottom)
     );
 
-    // Approximate card dimensions
     const CARD_WIDTH = 300;
     const CARD_HEIGHT = 230;
     const GAP = 12;
 
-    // ------------------------------------------------
-    // Horizontal position
-    // ------------------------------------------------
-
     const selectionCenter =
-      (selectionLeft +
-        selectionRight) /
-      2;
+      (selectionLeft + selectionRight) / 2;
 
     let left =
       selectionCenter -
       responseRect.left -
       CARD_WIDTH / 2;
 
-    // Prevent card from leaving response horizontally
     const MIN_LEFT = 8;
 
     const MAX_LEFT = Math.max(
@@ -204,10 +205,6 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       MIN_LEFT,
       Math.min(left, MAX_LEFT)
     );
-
-    // ------------------------------------------------
-    // Decide whether card goes above or below
-    // ------------------------------------------------
 
     const spaceBelow =
       window.innerHeight -
@@ -223,11 +220,9 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       | "below";
 
     if (
-      spaceBelow >=
-        CARD_HEIGHT + GAP ||
+      spaceBelow >= CARD_HEIGHT + GAP ||
       spaceBelow >= spaceAbove
     ) {
-      // Place underneath selected text
       top =
         selectionBottom -
         responseRect.top +
@@ -235,7 +230,6 @@ function ResponseBlock({ text }: ResponseBlockProps) {
 
       placement = "below";
     } else {
-      // Place above selected text
       top =
         selectionTop -
         responseRect.top -
@@ -244,8 +238,6 @@ function ResponseBlock({ text }: ResponseBlockProps) {
 
       placement = "above";
 
-      // Keep it from going outside
-      // the top of the response.
       top = Math.max(
         8,
         top
@@ -276,16 +268,13 @@ function ResponseBlock({ text }: ResponseBlockProps) {
     try {
       setIsTransforming(true);
 
-      // Pinching closes an existing Deep Dive.
       setShowDeepDive(false);
       setDeepDiveText("");
       setDeepDivePosition(null);
       setSelectedWordIndexes([]);
       setLassoPoints([]);
 
-      if (
-        action === "condense"
-      ) {
+      if (action === "condense") {
         setGesture(
           "Condensing..."
         );
@@ -295,27 +284,22 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         );
       }
 
-      const result =
-        await fetch(
-          "/api/transform",
-          {
-            method: "POST",
+      const result = await fetch(
+        "/api/transform",
+        {
+          method: "POST",
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
 
-            body:
-              JSON.stringify({
-                text:
-                  displayedText,
-
-                action:
-                  action,
-              }),
-          }
-        );
+          body: JSON.stringify({
+            text: displayedText,
+            action,
+          }),
+        }
+      );
 
       if (!result.ok) {
         throw new Error(
@@ -330,9 +314,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         data.text
       );
 
-      if (
-        action === "condense"
-      ) {
+      if (action === "condense") {
         setGesture(
           "PINCH IN → Condensed"
         );
@@ -351,14 +333,12 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         "Transformation failed"
       );
     } finally {
-      setIsTransforming(
-        false
-      );
+      setIsTransforming(false);
     }
   };
 
   // --------------------------------------------------
-  // Ask LLM to elaborate
+  // Elaborate
   // --------------------------------------------------
 
   const elaborateSelection = async (
@@ -373,20 +353,14 @@ function ResponseBlock({ text }: ResponseBlockProps) {
 
     const selectedText =
       indexes
-        .map(
-          (index) =>
-            words[index]
-        )
+        .map((index) => words[index])
         .join(" ");
 
     try {
-      setIsElaborating(
-        true
-      );
+      setIsElaborating(true);
 
       setDeepDiveText("");
 
-      // Calculate where the card should appear.
       const position =
         calculateDeepDivePosition(
           indexes
@@ -396,35 +370,28 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         position
       );
 
-      // Show card immediately so user gets
-      // instant feedback while API is loading.
       setShowDeepDive(true);
 
       setGesture(
         "Exploring..."
       );
 
-      const result =
-        await fetch(
-          "/api/elaborate",
-          {
-            method: "POST",
+      const result = await fetch(
+        "/api/elaborate",
+        {
+          method: "POST",
 
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
 
-            body:
-              JSON.stringify({
-                selectedText:
-                  selectedText,
-
-                context:
-                  displayedText,
-              }),
-          }
-        );
+          body: JSON.stringify({
+            selectedText,
+            context: displayedText,
+          }),
+        }
+      );
 
       if (!result.ok) {
         throw new Error(
@@ -456,9 +423,80 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         "Deep Dive failed"
       );
     } finally {
-      setIsElaborating(
-        false
+      setIsElaborating(false);
+    }
+  };
+
+  // --------------------------------------------------
+  // Rewrite response after scrub
+  // --------------------------------------------------
+
+  const rewriteText = async () => {
+    if (
+      isTransforming ||
+      isElaborating
+    ) {
+      return;
+    }
+
+    try {
+      setIsTransforming(true);
+
+      // Rewrite replaces the whole response,
+      // so close any existing Deep Dive.
+      setShowDeepDive(false);
+      setDeepDiveText("");
+      setDeepDivePosition(null);
+      setSelectedWordIndexes([]);
+      setLassoPoints([]);
+
+      setGesture(
+        "Rewriting..."
       );
+
+      const result = await fetch(
+        "/api/rewrite",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body: JSON.stringify({
+            text: displayedText,
+          }),
+        }
+      );
+
+      if (!result.ok) {
+        throw new Error(
+          "Failed to rewrite text"
+        );
+      }
+
+      const data =
+        await result.json();
+
+      setDisplayedText(
+        data.text
+      );
+
+      setGesture(
+        "SCRUB → Rewritten"
+      );
+    } catch (error) {
+      console.error(
+        "Rewrite error:",
+        error
+      );
+
+      setGesture(
+        "Rewrite failed"
+      );
+    } finally {
+      setIsTransforming(false);
     }
   };
 
@@ -481,13 +519,11 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         }
 
         if (first) {
-          setIsLassoing(
-            false
-          );
+          setIsLassoing(false);
+          setLassoPoints([]);
 
-          setLassoPoints(
-            []
-          );
+          scrubDetected.current =
+            false;
 
           startDistance.current =
             distance;
@@ -516,19 +552,13 @@ function ResponseBlock({ text }: ResponseBlockProps) {
           latestDistance.current;
 
         if (start === 0) {
-          setGesture(
-            "Could not detect gesture"
-          );
-
           return;
         }
 
         const ratio =
           end / start;
 
-        if (
-          ratio > 1.15
-        ) {
+        if (ratio > 1.15) {
           transformText(
             "expand"
           );
@@ -538,24 +568,18 @@ function ResponseBlock({ text }: ResponseBlockProps) {
           transformText(
             "condense"
           );
-        } else {
-          setGesture(
-            "Gesture too small"
-          );
         }
       }
     );
 
   // --------------------------------------------------
-  // Finger coordinates relative to response
+  // Coordinates
   // --------------------------------------------------
 
   const getRelativePoint = (
     touch: React.Touch
   ): Point | null => {
-    if (
-      !responseRef.current
-    ) {
+    if (!responseRef.current) {
       return null;
     }
 
@@ -574,7 +598,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Distance between two points
+  // Distance
   // --------------------------------------------------
 
   const getDistance = (
@@ -582,12 +606,10 @@ function ResponseBlock({ text }: ResponseBlockProps) {
     point2: Point
   ) => {
     const deltaX =
-      point2.x -
-      point1.x;
+      point2.x - point1.x;
 
     const deltaY =
-      point2.y -
-      point1.y;
+      point2.y - point1.y;
 
     return Math.sqrt(
       deltaX * deltaX +
@@ -596,15 +618,13 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Closed lasso detection
+  // Closed lasso
   // --------------------------------------------------
 
   const isLassoClosed = (
     points: Point[]
   ) => {
-    if (
-      points.length < 10
-    ) {
+    if (points.length < 10) {
       return false;
     }
 
@@ -622,17 +642,13 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         lastPoint
       );
 
-    const CLOSE_THRESHOLD =
-      50;
-
     return (
-      closingDistance <=
-      CLOSE_THRESHOLD
+      closingDistance <= 50
     );
   };
 
   // --------------------------------------------------
-  // Point-in-polygon algorithm
+  // Point inside polygon
   // --------------------------------------------------
 
   const isPointInsidePolygon = (
@@ -664,8 +680,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         polygon[j].y;
 
       const intersects =
-        yi > y !==
-          yj > y &&
+        yi > y !== yj > y &&
         x <
           ((xj - xi) *
             (y - yi)) /
@@ -673,8 +688,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
             xi;
 
       if (intersects) {
-        inside =
-          !inside;
+        inside = !inside;
       }
     }
 
@@ -682,15 +696,13 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
-  // Find words inside lasso
+  // Words inside lasso
   // --------------------------------------------------
 
   const findWordsInsideLasso = (
     polygon: Point[]
   ) => {
-    if (
-      !responseRef.current
-    ) {
+    if (!responseRef.current) {
       return [];
     }
 
@@ -705,9 +717,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
         wordElement,
         index
       ) => {
-        if (
-          !wordElement
-        ) {
+        if (!wordElement) {
           return;
         }
 
@@ -724,15 +734,12 @@ function ResponseBlock({ text }: ResponseBlockProps) {
           wordRect.height / 2 -
           responseRect.top;
 
-        const wordCenter: Point =
-          {
-            x: centerX,
-            y: centerY,
-          };
-
         if (
           isPointInsidePolygon(
-            wordCenter,
+            {
+              x: centerX,
+              y: centerY,
+            },
             polygon
           )
         ) {
@@ -747,6 +754,83 @@ function ResponseBlock({ text }: ResponseBlockProps) {
   };
 
   // --------------------------------------------------
+  // Scrub detection
+  // --------------------------------------------------
+
+  const updateScrubDetection = (
+    point: Point
+  ) => {
+    const MIN_SEGMENT_DISTANCE =
+      35;
+
+    const dx =
+      point.x -
+      scrubSegmentStartX.current;
+
+    if (
+      Math.abs(dx) <
+      MIN_SEGMENT_DISTANCE
+    ) {
+      return;
+    }
+
+    const newDirection:
+      | "left"
+      | "right" =
+      dx > 0
+        ? "right"
+        : "left";
+
+    // First meaningful movement
+    // establishes initial direction.
+    if (
+      scrubDirection.current ===
+      null
+    ) {
+      scrubDirection.current =
+        newDirection;
+
+      scrubSegmentStartX.current =
+        point.x;
+
+      return;
+    }
+
+    // Continue travelling in same direction.
+    if (
+      newDirection ===
+      scrubDirection.current
+    ) {
+      return;
+    }
+
+    // Direction reversed.
+    scrubDirectionChanges.current +=
+      1;
+
+    scrubDirection.current =
+      newDirection;
+
+    scrubSegmentStartX.current =
+      point.x;
+
+    // Three reversals = scrub.
+    if (
+      scrubDirectionChanges.current >=
+      3
+    ) {
+      scrubDetected.current =
+        true;
+
+      setIsLassoing(false);
+      setLassoPoints([]);
+
+      // Perform the actual rewrite.
+      rewriteText();
+    }
+  };
+
+  // --------------------------------------------------
   // Touch start
   // --------------------------------------------------
 
@@ -754,18 +838,13 @@ function ResponseBlock({ text }: ResponseBlockProps) {
     event:
       React.TouchEvent<HTMLDivElement>
   ) => {
-    // Two fingers means pinch.
+    // More than one finger means pinch.
     if (
       event.touches.length >
       1
     ) {
-      setIsLassoing(
-        false
-      );
-
-      setLassoPoints(
-        []
-      );
+      setIsLassoing(false);
+      setLassoPoints([]);
 
       return;
     }
@@ -786,39 +865,39 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       return;
     }
 
-    // Starting a new lasso closes
-    // the previous Deep Dive.
-    setShowDeepDive(
-      false
-    );
+    // Reset scrub detector.
+    scrubDirection.current =
+      null;
 
-    setDeepDiveText(
-      ""
-    );
+    scrubDirectionChanges.current =
+      0;
 
-    setDeepDivePosition(
-      null
-    );
+    scrubSegmentStartX.current =
+      point.x;
 
-    setSelectedWordIndexes(
-      []
-    );
+    scrubDetected.current =
+      false;
 
-    setIsLassoing(
-      true
-    );
+    // Starting a new gesture closes
+    // an existing Deep Dive.
+    setShowDeepDive(false);
+    setDeepDiveText("");
+    setDeepDivePosition(null);
+    setSelectedWordIndexes([]);
+
+    setIsLassoing(true);
 
     setLassoPoints([
       point
     ]);
 
     setGesture(
-      "Drawing lasso..."
+      "Drawing..."
     );
   };
 
   // --------------------------------------------------
-  // Touch movement
+  // Touch move
   // --------------------------------------------------
 
   const handleTouchMove = (
@@ -829,18 +908,15 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       event.touches.length >
       1
     ) {
-      setIsLassoing(
-        false
-      );
-
-      setLassoPoints(
-        []
-      );
+      setIsLassoing(false);
+      setLassoPoints([]);
 
       return;
     }
 
-    if (!isLassoing) {
+    if (
+      scrubDetected.current
+    ) {
       return;
     }
 
@@ -853,12 +929,26 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       return;
     }
 
-    setLassoPoints(
-      (currentPoints) => [
-        ...currentPoints,
-        point,
-      ]
+    // Check scrub before treating
+    // movement as lasso.
+    updateScrubDetection(
+      point
     );
+
+    if (
+      scrubDetected.current
+    ) {
+      return;
+    }
+
+    if (isLassoing) {
+      setLassoPoints(
+        (currentPoints) => [
+          ...currentPoints,
+          point,
+        ]
+      );
+    }
   };
 
   // --------------------------------------------------
@@ -867,26 +957,30 @@ function ResponseBlock({ text }: ResponseBlockProps) {
 
   const handleTouchEnd =
     () => {
+      // Scrub already won gesture classification.
       if (
-        !isLassoing
+        scrubDetected.current
       ) {
+        setIsLassoing(false);
+        setLassoPoints([]);
+
         return;
       }
 
-      setIsLassoing(
-        false
-      );
+      if (!isLassoing) {
+        return;
+      }
+
+      setIsLassoing(false);
 
       if (
         lassoPoints.length <
         10
       ) {
-        setLassoPoints(
-          []
-        );
+        setLassoPoints([]);
 
         setGesture(
-          "Lasso too small"
+          "Gesture not recognized"
         );
 
         return;
@@ -901,14 +995,9 @@ function ResponseBlock({ text }: ResponseBlockProps) {
           "Lasso not closed"
         );
 
-        setTimeout(
-          () => {
-            setLassoPoints(
-              []
-            );
-          },
-          500
-        );
+        setTimeout(() => {
+          setLassoPoints([]);
+        }, 500);
 
         return;
       }
@@ -926,34 +1015,24 @@ function ResponseBlock({ text }: ResponseBlockProps) {
           "No text selected"
         );
 
-        setTimeout(
-          () => {
-            setLassoPoints(
-              []
-            );
-          },
-          500
-        );
+        setLassoPoints([]);
 
         return;
       }
 
-      // Highlight the words.
       setSelectedWordIndexes(
         selectedIndexes
       );
 
-      // Remove lasso line.
       setLassoPoints([]);
 
-      // Start contextual Deep Dive.
       elaborateSelection(
         selectedIndexes
       );
     };
 
   // --------------------------------------------------
-  // SVG lasso path
+  // Lasso SVG path
   // --------------------------------------------------
 
   const createLassoPath =
@@ -1008,8 +1087,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
             : ""
         }`}
         style={{
-          touchAction:
-            "none",
+          touchAction: "none",
         }}
         onTouchStart={
           handleTouchStart
@@ -1023,19 +1101,13 @@ function ResponseBlock({ text }: ResponseBlockProps) {
       >
         <div className="response-text">
           {words.map(
-            (
-              word,
-              index
-            ) => (
+            (word, index) => (
               <span
                 key={`${word}-${index}`}
-                ref={(
-                  element
-                ) => {
+                ref={(element) => {
                   wordRefs.current[
                     index
-                  ] =
-                    element;
+                  ] = element;
                 }}
                 className={
                   selectedWordIndexes.includes(
@@ -1047,8 +1119,7 @@ function ResponseBlock({ text }: ResponseBlockProps) {
               >
                 {word}
                 {index <
-                words.length -
-                  1
+                words.length - 1
                   ? " "
                   : ""}
               </span>
@@ -1088,8 +1159,6 @@ function ResponseBlock({ text }: ResponseBlockProps) {
               onTouchStart={(
                 event
               ) => {
-                // Prevent touching the card
-                // from starting another lasso.
                 event.stopPropagation();
               }}
             >
