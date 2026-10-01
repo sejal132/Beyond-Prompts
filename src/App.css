@@ -68,9 +68,14 @@ button {
   border-radius: 12px;
 }
 
-.response-block {
-  margin-top: 30px;
+/* --------------------------------------------------
+   AI Response
+-------------------------------------------------- */
 
+.response-block {
+  position: relative;
+
+  margin-top: 30px;
   padding: 20px;
 
   line-height: 1.6;
@@ -81,14 +86,54 @@ button {
   user-select: none;
   touch-action: none;
 
+  overflow: hidden;
+
   transition: opacity 0.2s ease;
+}
+
+.response-text {
+  position: relative;
+  z-index: 1;
 }
 
 .response-block.transforming {
   opacity: 0.5;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------
+   Lasso
+-------------------------------------------------- */
+
+.lasso-overlay {
+  position: absolute;
+
+  top: 0;
+  left: 0;
+
+  width: 100%;
+  height: 100%;
+
+  z-index: 10;
 
   pointer-events: none;
 }
+
+.lasso-path {
+  fill: none;
+
+  stroke: currentColor;
+  stroke-width: 2.5;
+
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  opacity: 0.7;
+}
+
+/* --------------------------------------------------
+   Gesture status
+-------------------------------------------------- */
 
 .gesture-status {
   text-align: center;
